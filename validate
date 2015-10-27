@@ -1,0 +1,83 @@
+#!/bin/bash
+
+# exit script if one command fails
+set -o errexit
+
+# exit script if Variable is not set
+set -o nounset
+
+INPUT=/bbx/input/biobox.yaml
+OUTPUT=/bbx/output
+METADATA=/bbx/metadata
+
+# Since this script is the entrypoint to your container
+# you can access the task in `docker run task` as the first argument
+TASK=$1
+
+# Ensure the biobox.yaml file is valid (TODO)
+# validate-biobox-file --input ${INPUT} --schema /schema.yaml
+
+# Use grep to get $TASK in /Taskfile
+CMD=$(egrep ^${TASK}: /Taskfile | cut -f 2 -d ':')
+if [[ -z ${CMD} ]]; then
+  echo "Abort, no task found for '${TASK}'."
+  exit 1
+fi
+
+# if /bbx/metadata is mounted create log.txt
+if [ -d "$METADATA" ]; then
+  CMD="($CMD) >& $METADATA/log.txt"
+fi
+
+TMP_DIR=$(mktemp -d)
+
+INPUT_JSON="${WORK_DIR}/biobox.json"
+
+$(yaml2json < ${INPUT} > $INPUT_JSON)
+
+ARGUMENTS=$(jq  --raw-output '.arguments[]' $INPUT_JSON )
+
+#get assembly (fasta)
+ASSEMBLY=$( echo $ARGUMENTS | jq --raw-output 'select(has("fasta")) | .fasta[].value' | tr '\n' ' ')
+
+#get reads (fastq)
+READS=$( echo $ARGUMENTS | jq --raw-output 'select(has("fastq")) | .fastq[].value' | tr '\n' ' ')
+
+#get cache
+CACHE=$( echo $ARGUMENTS | jq --raw-output 'select(has("cache")) | .cache ' )
+
+# ALE requires an alignment instead of reads, convert using bowtie2
+bowtie2-build $READS tmp
+bowtie2 -a -x tmp -q -U $READS --very-sensitive -a --reorder --un unaligned.reads -S sam_out
+
+# set usable file
+SAM=$(sam_out)
+
+#check if cache is defined
+if [ ! -z "$CACHE" ]; then
+        TMP_DIR=$CACHE
+fi
+
+eval ${CMD}
+
+#convert pdf plots to png files
+#convert ${TMP_DIR}/comparison_plots.pdf plot.png
+
+cat << EOF > ${OUTPUT}/biobox.yaml
+version: 0.1.0
+results:
+  - name: plot
+    type: pdf
+    inline: false
+    value: comparison_plots.pdf
+    description: Plots of the different errors
+  - name: summary
+    type: tsv
+    inline: false
+    value: asm_0/summary.tsv
+    description: all detected errors combined
+  - name: library
+    type: bam
+    value: asm_0/bam/sorted_library.bam
+    description: bam library usable by IGV
+EOF 

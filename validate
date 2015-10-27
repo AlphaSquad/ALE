@@ -66,18 +66,9 @@ eval ${CMD}
 cat << EOF > ${OUTPUT}/biobox.yaml
 version: 0.1.0
 results:
-  - name: plot
-    type: pdf
+  - name: everything
+    type: txt
     inline: false
-    value: comparison_plots.pdf
-    description: Plots of the different errors
-  - name: summary
-    type: tsv
-    inline: false
-    value: asm_0/summary.tsv
-    description: all detected errors combined
-  - name: library
-    type: bam
-    value: asm_0/bam/sorted_library.bam
-    description: bam library usable by IGV
+    value: ALE_out.txt
+    description: everything packed to .txt output
 EOF 

@@ -2,8 +2,8 @@ FROM debian:stable
 MAINTAINER Adrian Fritz, Adrian.Fritz@Helmholtz-HZI.de
 
 # In case you're sitting behind a proxy
-ENV http_proxy http://rzproxy.helmholtz-hzi.de:3128
-ENV https_proxy http://rzproxy.helmholtz-hzi.de:3128
+# ENV http_proxy <proxy>
+# ENV https_proxy <proxy>
 
 ENV PACKAGES wget git gcc make unzip build-essential zlib1g-dev python
 
@@ -31,8 +31,6 @@ VOLUME ["/output"]
 
 # Add Taskfile to /
 ADD Taskfile /
-
-RUN cd /
 
 ADD validate /usr/local/bin/
 

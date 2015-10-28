@@ -6,9 +6,9 @@ set -o errexit
 # exit script if Variable is not set
 set -o nounset
 
-INPUT=/bbx/input/biobox.yaml
-OUTPUT=/bbx/output
-METADATA=/bbx/metadata
+INPUT=/bbx/mnt/input/biobox.yaml
+OUTPUT=/bbx/mnt/output
+METADATA=/bbx/mnt/metadata
 
 # Since this script is the entrypoint to your container
 # you can access the task in `docker run task` as the first argument
@@ -31,24 +31,30 @@ fi
 
 TMP_DIR=$(mktemp -d)
 
-INPUT_JSON="${WORK_DIR}/biobox.json"
+INPUT_JSON="${TMP_DIR}/biobox.json"
 
 $(yaml2json < ${INPUT} > $INPUT_JSON)
 
-ARGUMENTS=$(jq  --raw-output '.arguments[]' $INPUT_JSON )
+ARGUMENTS=$(jq --raw-output '.arguments' $INPUT_JSON )
 
 #get assembly (fasta)
-ASSEMBLY=$( echo $ARGUMENTS | jq --raw-output 'select(has("fasta")) | .fasta[].value' | tr '\n' ' ')
+ASSEMBLY=$( echo $ARGUMENTS | jq --raw-output 'select(has("assemblies")) | .assemblies[].path' | tr '\n' ' ')
 
-#get reads (fastq)
-READS=$( echo $ARGUMENTS | jq --raw-output 'select(has("fastq")) | .fastq[].value' | tr '\n' ' ')
+#get reads (gzipped? fastq)
+READS=$( echo $ARGUMENTS | jq --raw-output 'select(has("fastqs")) | .fastqs[].path' | tr '\n' ' ')
 
-#get cache
+# Evaluation needs fastq reads
+# unzip $READS
+# strip gz (and possibly tar) from filename
+# READS=${READS%.gz}
+# READS=${READS%.tar}
+
+# get cache
 CACHE=$( echo $ARGUMENTS | jq --raw-output 'select(has("cache")) | .cache ' )
 
-# ALE requires an alignment instead of reads, convert using bowtie2
+# ALE requires an alignment instead of reads, convert using bowtie2, delete tmp files afterwards
 bowtie2-build $READS tmp
-bowtie2 -a -x tmp -q -U $READS --very-sensitive -a --reorder --un unaligned.reads -S sam_out
+bowtie2 -a -x tmp -q -U $READS --very-sensitive -a --reorder --un unaligned.reads -S sam_out && rm -f tmp
 
 # set usable file
 SAM=$(sam_out)
@@ -59,9 +65,6 @@ if [ ! -z "$CACHE" ]; then
 fi
 
 eval ${CMD}
-
-#convert pdf plots to png files
-#convert ${TMP_DIR}/comparison_plots.pdf plot.png
 
 cat << EOF > ${OUTPUT}/biobox.yaml
 version: 0.1.0

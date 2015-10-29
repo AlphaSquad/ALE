@@ -41,7 +41,7 @@ ARGUMENTS=$(jq --raw-output '.arguments' $INPUT_JSON )
 ASSEMBLY=$( echo $ARGUMENTS | jq --raw-output 'select(has("assemblies")) | .assemblies[].path' | tr '\n' ' ')
 
 #get reads (gzipped? fastq)
-READS=$( echo $ARGUMENTS | jq --raw-output 'select(has("fastqs")) | .fastqs[].path' | tr '\n' ' ')
+READS=$( echo $ARGUMENTS | jq --raw-output 'select(has("reads")) | .reads[].path' | tr '\n' ' ')
 
 # Evaluation needs fastq reads
 # unzip $READS

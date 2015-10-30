@@ -57,12 +57,12 @@ READS=$READS$".fq"
 # get cache
 CACHE=$( echo $ARGUMENTS | jq --raw-output 'select(has("cache")) | .cache ' )
 
-# ALE requires an alignment instead of reads, convert using bowtie2, delete tmp files afterwards
+# ALE requires an alignment instead of reads, convert using bowtie2, pipe sam into bam directly for meomry reasons
 bowtie2-build out.fasta tmp &> /dev/null #--quiet
-bowtie2 -a -x tmp -q -U $READS --very-sensitive -a --reorder --un unaligned.reads -S sam_out.sam
+bowtie2 -a -x tmp -q -U $READS --very-sensitive -a --reorder -S sam_out.sam | samtools view -bS -o library.bam -
 
 # set usable file
-SAM="../../sam_out.sam"
+SAM="../../library.bam"
 
 #check if cache is defined
 if [ ! -z "$CACHE" ]; then

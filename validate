@@ -41,29 +41,35 @@ ARGUMENTS=$(jq --raw-output '.arguments' $INPUT_JSON )
 ASSEMBLY=$( echo $ARGUMENTS | jq --raw-output 'select(has("assemblies")) | .assemblies[].path' | tr '\n' ' ')
 
 #get reads (gzipped? fastq)
-READS=$( echo $ARGUMENTS | jq --raw-output 'select(has("reads")) | .reads[].path' | tr '\n' ' ')
+READS=$( echo $ARGUMENTS | jq --raw-output 'select(has("reads")) | .reads.path')
+
+# convert fastq zipped input to fasta (for building the index)
+seqtk seq -a $READS > out.fasta
 
 # Evaluation needs fastq reads
-# unzip $READS
+tar -xzf $READS
 # strip gz (and possibly tar) from filename
-# READS=${READS%.gz}
-# READS=${READS%.tar}
+READS=${READS%.gz}
+# READS=${READS%.tar} single files, no tar
+# append correct file ending
+READS=$READS$".fq"
 
 # get cache
 CACHE=$( echo $ARGUMENTS | jq --raw-output 'select(has("cache")) | .cache ' )
 
 # ALE requires an alignment instead of reads, convert using bowtie2, delete tmp files afterwards
-bowtie2-build $READS tmp
-bowtie2 -a -x tmp -q -U $READS --very-sensitive -a --reorder --un unaligned.reads -S sam_out && rm -f tmp
+bowtie2-build out.fasta tmp &> /dev/null #--quiet
+bowtie2 -a -x tmp -q -U $READS --very-sensitive -a --reorder --un unaligned.reads -S sam_out.sam
 
 # set usable file
-SAM=$(sam_out)
+SAM="../../sam_out.sam"
 
 #check if cache is defined
 if [ ! -z "$CACHE" ]; then
         TMP_DIR=$CACHE
 fi
 
+cd ALE/src/ #?
 eval ${CMD}
 
 cat << EOF > ${OUTPUT}/biobox.yaml

@@ -33,11 +33,28 @@ ENV JQ http://stedolan.github.io/jq/download/linux64/jq
 # download jq and make it executable
 RUN cd /usr/local/bin && wget --quiet ${JQ} && chmod 700 jq
 
-VOLUME ["/output"]
+# Locations for biobox file validator
+ENV VALIDATOR /bbx/validator/
+ENV BASE_URL https://s3-us-west-1.amazonaws.com/bioboxes-tools/validate-biobox-file
+ENV VERSION  0.x.y
+RUN mkdir -p ${VALIDATOR}
+
+# download the validate-biobox-file binary and extract it to the directory $VALIDATOR
+RUN wget \
+      --quiet \
+      --output-document -\
+      ${BASE_URL}/${VERSION}/validate-biobox-file.tar.xz \
+    | tar xJf - \
+      --directory ${VALIDATOR} \
+      --strip-components=1
+
+ENV PATH ${PATH}:${VALIDATOR}
 
 # Add Taskfile to /
 ADD Taskfile /
 
 ADD validate /usr/local/bin/
+
+ADD schema.yaml /
 
 ENTRYPOINT ["validate"]

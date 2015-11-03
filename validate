@@ -45,23 +45,48 @@ ASSEMBLY=$( echo $ARGUMENTS | jq --raw-output 'select(has("assemblies")) | .asse
 #labels
 LABELS=$( echo $ARGUMENTS | jq --raw-output 'select(has("assemblies")) | .assemblies[].id' |  tr '\n' ' ' | xargs | tr ' ' ',')
 
-#get reads (gzipped? fastq)
-READS=$( echo $ARGUMENTS | jq --raw-output 'select(has("reads")) | .reads[].path')
+# single or paired
+END=$( echo $ARGUMENTS | jq --raw-output 'select(has("reads")) | .reads[].type' |  tr '\n' ' ')
 
-# convert fastq zipped input to fasta (for building the index)
-seqtk seq -a $READS > out.fasta
-
-UNZIPPED_READS="${TMP_DIR}/reads.fq"
+#get reads (gzipped fastq)
+READS=$( echo $ARGUMENTS | jq --raw-output 'select(has("reads")) | .reads[].path' |  tr '\n' ' ')
 
 # Evaluation needs fastq reads
-gunzip -c $READS > $UNZIPPED_READS
+gunzip $READS
+
+SINGLE_ENDED=""
+PAIRED_1=""
+PAIRED_2=""
+
+# sort by single/paired
+READ_ARR=( $READS )
+I=0
+for typ in $END; do
+if [ $typ = "single" ]; then
+  SINGLE_ENDED=$SINGLE_ENDED${READ_ARR[$I]%.*}$"," #%.* for removing the zip file ending
+else # can only be paired then
+  perl unshuffle_fastq.pl -f ${READ_ARR[$I]%.*} -o `pwd` -n ${READ_ARR[$I]%.*}
+  PAIRED_1=$PAIRED_1${READ_ARR[$I]%.*}$".1,"
+  PAIRED_2=$PAIRED_2${READ_ARR[$I]%.*}$".2,"
+fi
+I=$(expr $I + 1)
+done
+
+# remove trailing ,
+SINGLE_ENDED=${SINGLE_ENDED%,}
+PAIRED_1=${PAIRED_1%,}
+PAIRED_2=${PAIRED_2%,}
+
+# convert fastq zipped input to fasta (for building the index)
+for seq in $READS; do
+  seqtk seq -a $seseq >> out.fasta
 
 # get cache
 CACHE=$( echo $ARGUMENTS | jq --raw-output 'select(has("cache")) | .cache ' )
 
-# ALE requires an alignment instead of reads, convert using bowtie2, pipe sam into bam directly for meomry reasons
-bowtie2-build out.fasta tmp &> /dev/null #--quiet
-bowtie2 -a -x tmp -q -U $UNZIPPED_READS --very-sensitive -a --reorder -S sam_out.sam | samtools view -bS -o library.bam -
+# ALE requires an alignment instead of reads, convert using bowtie2, pipe sam into bam directly for memory reasons
+bowtie2-build --quiet out.fasta tmp
+bowtie2 -a -x tmp -q -U $SINGLE_ENDED -1 $PAIRED_1 -2 $PAIRED_2 --very-sensitive -a --reorder -S sam_out.sam | samtools view -bS -o library.bam -
 
 # set usable file
 SAM="../../library.bam"

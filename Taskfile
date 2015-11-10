@@ -1,1 +1,1 @@
-ale: ./ALE ${SAM} ${ASSEMBLY} ${OUTPUT}
+default: ./ALE ${SAM} ${ASSEMBLY} ${OUTPUT}

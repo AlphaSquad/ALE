@@ -1,10 +1,6 @@
 FROM debian:stable
 MAINTAINER Adrian Fritz, Adrian.Fritz@Helmholtz-HZI.de
 
-# In case you're sitting behind a proxy
-# ENV http_proxy <proxy>
-# ENV https_proxy <proxy>
-
 ENV PACKAGES wget git gcc make unzip build-essential zlib1g-dev libbz2-dev libncurses5-dev python seqtk
 
 RUN apt-get update
@@ -33,11 +29,32 @@ ENV JQ http://stedolan.github.io/jq/download/linux64/jq
 # download jq and make it executable
 RUN cd /usr/local/bin && wget --quiet ${JQ} && chmod 700 jq
 
+# Locations for biobox file validator
+ENV VALIDATOR /bbx/validator/
+ENV BASE_URL https://s3-us-west-1.amazonaws.com/bioboxes-tools/validate-biobox-file
+ENV VERSION  0.x.y
+RUN mkdir -p ${VALIDATOR}
+
+# download the validate-biobox-file binary and extract it to the directory $VALIDATOR
+RUN wget \
+      --quiet \
+      --output-document -\
+      ${BASE_URL}/${VERSION}/validate-biobox-file.tar.xz \
+    | tar xJf - \
+      --directory ${VALIDATOR} \
+      --strip-components=1
+
+ENV PATH ${PATH}:${VALIDATOR}
+
 VOLUME ["/output"]
 
 # Add Taskfile to /
 ADD Taskfile /
 
 ADD validate /usr/local/bin/
+
+ADD schema.yaml /
+
+ADD unshuffle.pl /
 
 ENTRYPOINT ["validate"]

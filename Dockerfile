@@ -1,9 +1,6 @@
 FROM debian:stable
 MAINTAINER Adrian Fritz, Adrian.Fritz@Helmholtz-HZI.de
 
-ENV http_proxy http://rzproxy.helmholtz-hzi.de:3128
-ENV https_proxy http://rzproxy.helmholtz-hzi.de:3128
-
 ENV PACKAGES wget git gcc make unzip build-essential zlib1g-dev libbz2-dev libncurses5-dev python seqtk
 
 RUN apt-get update

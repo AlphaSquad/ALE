@@ -15,7 +15,7 @@ METADATA=/bbx/mnt/metadata
 TASK=$1
 
 # Ensure the biobox.yaml file is valid (TODO)
-# validate-biobox-file --input ${INPUT} --schema /schema.yaml
+validate-biobox-file --input ${INPUT} --schema /schema.yaml
 
 # Use grep to get $TASK in /Taskfile
 CMD=$(egrep ^${TASK}: /Taskfile | cut -f 2 -d ':')
@@ -38,41 +38,82 @@ $(yaml2json < ${INPUT} > $INPUT_JSON)
 ARGUMENTS=$(jq --raw-output '.arguments' $INPUT_JSON )
 
 #get assembly (fasta)
-ASSEMBLY=$( echo $ARGUMENTS | jq --raw-output 'select(has("assemblies")) | .assemblies[].path' | tr '\n' ' ')
+ASSEMBLY=$( echo $ARGUMENTS | jq --raw-output 'select(has("assemblies")) | .assemblies[].path' |  tr '\n' ' ' | xargs | tr ' ' ',')
 
-#get reads (gzipped? fastq)
-READS=$( echo $ARGUMENTS | jq --raw-output 'select(has("reads")) | .reads.path')
+LABELS=$( echo $ARGUMENTS | jq --raw-output 'select(has("assemblies")) | .assemblies[].id' |  tr '\n' ' ' | xargs | tr ' ' ',')
 
-# convert fastq zipped input to fasta (for building the index)
-seqtk seq -a $READS > out.fasta
+#get gzipped fastq reads
+READS=$( echo $ARGUMENTS | jq --raw-output 'select(has("reads")) | .reads[].path' |  tr '\n' ' ')
 
-# Evaluation needs fastq reads
-tar -xzf $READS
-# strip gz (and possibly tar) from filename
-READS=${READS%.gz}
-# READS=${READS%.tar} single files, no tar
-# append correct file ending
-READS=$READS$".fq"
+# check whether reads are single or paired end
+END=$( echo $ARGUMENTS | jq --raw-output 'select(has("reads")) | .reads[].type' |  tr '\n' ' ')
 
-# get cache
-CACHE=$( echo $ARGUMENTS | jq --raw-output 'select(has("cache")) | .cache ' )
-
-# ALE requires an alignment instead of reads, convert using bowtie2, pipe sam into bam directly for meomry reasons
-bowtie2-build out.fasta tmp &> /dev/null #--quiet
-bowtie2 -a -x tmp -q -U $READS --very-sensitive -a --reorder -S sam_out.sam | samtools view -bS -o library.bam -
-
-# set usable file
-SAM="../../library.bam"
+#get cache
+CACHE=$( echo $ARGUMENTS | jq --raw-output 'select(has("cache")) | .cache ' |  tr '\n' ' ')
 
 #check if cache is defined
 if [ ! -z "$CACHE" ]; then
         TMP_DIR=$CACHE
 fi
 
-cd ALE/src/ #?
+UNZIPPED_READS=""
+
+# we need reads unzipped (keep name, strip path, extract to tmp)
+for f in $READS; do 
+gunzip -c $f > $TMP_DIR$"/"${f##*/}
+UNZIPPED_READS=$UNZIPPED_READS$TMP_DIR$"/"${f##*/}$" "
+done
+
+SINGLE_ENDED="-U "
+PAIRED_1="-1 "
+PAIRED_2="-2 "
+
+# sort by single/paired end
+READ_ARR=( $UNZIPPED_READS )
+I=0
+for typ in $END; do
+if [ $typ = "single" ]; then
+  mv ${READ_ARR[$I]} ${READ_ARR[$I]%.gz} # strip .gz
+  SINGLE_ENDED=$SINGLE_ENDED${READ_ARR[$I]%.*}$","
+else # can only be paired then
+  perl unshuffle.pl -f ${READ_ARR[$I]} -o `pwd` -n ${READ_ARR[$I]%.*} # implicitely strips .gz
+  PAIRED_1=$PAIRED_1${READ_ARR[$I]%.*}$".1,"
+  PAIRED_2=$PAIRED_2${READ_ARR[$I]%.*}$".2,"
+fi
+I=$(expr $I + 1)
+done
+
+# remove trailing ,
+SINGLE_ENDED=${SINGLE_ENDED%,}
+PAIRED_1=${PAIRED_1%,}
+PAIRED_2=${PAIRED_2%,}
+
+if [ ${SINGLE_ENDED##* } ]; then #only paired
+  UNZIPPED_READS=$SINGLE_ENDED
+elif [ ${PAIRED_1##* } ]; then #only single ended
+  UNZIPPED_READS=$PAIRED_1$" "$PAIRED_2
+else
+  UNZIPPED_READS=$SINGLE_ENDED$" "$PAIRED_1$" "$PAIRED_2
+fi
+
+# get cache
+CACHE=$( echo $ARGUMENTS | jq --raw-output 'select(has("cache")) | .cache ' )
+
+# ALE requires an alignment instead of reads, convert using bowtie2
+bowtie2-build --quiet $ASSEMBLY $TMP_DIR/tmp
+bowtie2 -a -x $TMP_DIR/tmp -q $UNZIPPED_READS --very-sensitive --reorder --quiet -S $TMP_DIR/sam_out.sam 
+samtools view -bS -o $OUTPUT/library.bam $TMP_DIR/sam_out.sam
+
+# set usable file
+SAM=$OUTPUT$"/library.bam"
+
+OUT_DIR=$OUTPUT
+OUTPUT=$OUTPUT$"/ALE_out.txt"
+
+cd ALE/src/
 eval ${CMD}
 
-cat << EOF > ${OUTPUT}/biobox.yaml
+cat << EOF > ${OUT_DIR}/biobox.yaml
 version: 0.1.0
 results:
   - name: everything

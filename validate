@@ -31,7 +31,7 @@ if [ -d "$METADATA" ]; then
   CMD="($CMD) >& $METADATA/log.txt"
 fi
 
-TMP_DIR="${OUTPUT}"
+TMP_DIR=$(mktemp -d)
 
 INPUT_JSON="${TMP_DIR}/biobox.json"
 

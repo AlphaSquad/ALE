@@ -44,10 +44,6 @@ RUN wget \
       --directory ${VALIDATOR} \
       --strip-components=1
 
-ENV PATH ${PATH}:${VALIDATOR}
-
-VOLUME ["/output"]
-
 # Add Taskfile to /
 ADD Taskfile /
 

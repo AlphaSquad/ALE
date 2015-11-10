@@ -14,8 +14,10 @@ METADATA=/bbx/mnt/metadata
 # you can access the task in `docker run task` as the first argument
 TASK=$1
 
-# Ensure the biobox.yaml file is valid (TODO)
-validate-biobox-file --input ${INPUT} --schema /schema.yaml
+# Ensure the biobox.yaml file is valid
+validate-biobox-file \
+  --input ${INPUT} \
+  --schema /schema.yaml \
 
 # Use grep to get $TASK in /Taskfile
 CMD=$(egrep ^${TASK}: /Taskfile | cut -f 2 -d ':')
@@ -29,7 +31,7 @@ if [ -d "$METADATA" ]; then
   CMD="($CMD) >& $METADATA/log.txt"
 fi
 
-TMP_DIR=$(mktemp -d)
+TMP_DIR="${OUTPUT}"
 
 INPUT_JSON="${TMP_DIR}/biobox.json"
 
@@ -95,9 +97,6 @@ elif [ ${PAIRED_1##* } ]; then #only single ended
 else
   UNZIPPED_READS=$SINGLE_ENDED$" "$PAIRED_1$" "$PAIRED_2
 fi
-
-# get cache
-CACHE=$( echo $ARGUMENTS | jq --raw-output 'select(has("cache")) | .cache ' )
 
 # ALE requires an alignment instead of reads, convert using bowtie2
 bowtie2-build --quiet $ASSEMBLY $TMP_DIR/tmp
